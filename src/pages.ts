@@ -245,15 +245,25 @@ export function signupPage(plan?: string): string {
 export function loginPage(error?: string): string {
   return layout(
     "Open dashboard: ProofClip",
-    `<div class="wrap" style="max-width:460px">
+    `<div class="wrap" style="max-width:520px">
       <h1>Open dashboard</h1>
       ${error ? `<p style="color:#f87171">${esc(error)}</p>` : ""}
-      <form method="post" action="/login">
+      <form class="card" method="post" action="/login">
         <label>API key</label>
         <input name="key" type="password" required placeholder="pk_..." autocomplete="current-password">
         <div style="height:14px"></div>
         <button class="btn" type="submit">Open dashboard</button>
       </form>
+      <div class="card" style="margin-top:14px">
+        <b>Rotate API key</b>
+        <p class="muted" style="margin:6px 0 0;font-size:14px">Have your current key but want a fresh one? Reset it here. The old key stops working immediately.</p>
+        <form method="post" action="/login/reset" onsubmit="return confirm('Reset this API key? The old key will stop working immediately.')">
+          <label>Current API key</label>
+          <input name="key" type="password" required placeholder="pk_..." autocomplete="current-password">
+          <div style="height:12px"></div>
+          <button class="btn ghost" type="submit">Reset API key</button>
+        </form>
+      </div>
       <p class="muted" style="margin-top:14px">No account yet? <a href="/signup">Create one free</a></p>
     </div>`,
   );
