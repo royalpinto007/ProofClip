@@ -145,7 +145,7 @@ export function dashboardPage(d: DashData): string {
         </div>
       </div>
 
-      <div class="grid cols-2" style="margin-top:28px">
+      <div class="grid cols-3" style="margin-top:28px">
         <div class="card reveal">
           <b>Import a screenshot</b>
           <p class="muted" style="margin:6px 0 4px;font-size:14px">Add proof from DMs, comments or reviews. Imported items go live immediately.</p>
@@ -180,6 +180,14 @@ export function dashboardPage(d: DashData): string {
             </label>
             <div style="height:12px"></div>
             <button class="btn" type="submit">Save</button>
+          </form>
+        </div>
+
+        <div class="card reveal">
+          <b>Account access</b>
+          <p class="muted" style="margin:6px 0 12px;font-size:14px">Reset your API key if it was shared, leaked, or saved in the wrong place. The old key stops working immediately.</p>
+          <form method="post" action="/app/api-key/reset" onsubmit="return confirm('Reset your API key? The old key will stop working immediately.')">
+            <button class="btn ghost" type="submit">Reset API key</button>
           </form>
         </div>
       </div>

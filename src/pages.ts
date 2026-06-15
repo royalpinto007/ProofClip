@@ -2,7 +2,7 @@ import { PLANS } from "./plans";
 import { esc } from "./util";
 
 const STYLE = `
-:root{--bg:#090b10;--surface:#10141d;--surface2:#151b27;--panel:rgba(255,255,255,.055);--panel2:rgba(255,255,255,.08);--line:rgba(255,255,255,.11);--text:#f5f7fb;--muted:#aab2c5;--soft:#dbe4f3;--accent:#22c55e;--accent2:#38bdf8;--good:#34d399;--warn:#fbbf24;--bad:#fb7185;--maxw:1180px;--shadow:0 24px 70px -42px rgba(0,0,0,.85)}
+:root{--bg:#090b10;--surface:#10141d;--surface2:#151b27;--panel:rgba(255,255,255,.055);--panel2:rgba(255,255,255,.08);--line:rgba(255,255,255,.11);--text:#f5f7fb;--muted:#aab2c5;--soft:#dbe4f3;--accent:#22c55e;--accent2:#38bdf8;--good:#34d399;--warn:#fbbf24;--bad:#fb7185;--maxw:1360px;--shadow:0 24px 70px -42px rgba(0,0,0,.85)}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow-x:hidden}
@@ -34,8 +34,12 @@ input,textarea,select{width:100%;background:rgba(5,9,15,.72);border:1px solid va
 input:focus,textarea:focus,select:focus{outline:0;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(56,189,248,.16);background:rgba(7,12,20,.94)}
 label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
 .muted{color:var(--muted)}
+.home-hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:44px;align-items:center;padding:66px 0 42px}
 .hero{padding:76px 0 38px;text-align:center;position:relative}
+.home-hero .hero{padding:0;text-align:left}
 .hero h1{font-size:clamp(38px,6vw,68px);line-height:1.02;margin:0 auto 18px;max-width:15ch;letter-spacing:-1.7px;font-weight:900}
+.home-hero .hero h1{margin-left:0;margin-right:0;max-width:12ch}
+.home-hero .hero p{margin-left:0;margin-right:0;max-width:640px}
 .g{background:linear-gradient(100deg,#fff 8%,#7dd3fc 54%,#86efac 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .hero p{font-size:clamp(16px,2vw,20px);color:var(--muted);max-width:620px;margin:0 auto 28px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:5px 11px;color:var(--soft);background:rgba(255,255,255,.04)}
@@ -74,13 +78,13 @@ pre{background:rgba(0,0,0,.32);border:1px solid var(--line);border-radius:8px;pa
 .reveal{opacity:0;transform:translateY(24px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
 .reveal.in{opacity:1;transform:none}
 /* floating hero cards */
-.float-stack{position:relative;height:360px;max-width:520px;margin:0 auto;perspective:1000px}
+.float-stack{position:relative;height:420px;max-width:620px;margin:0 auto;perspective:1000px}
 .float-stack .fc{position:absolute;width:300px;text-align:left;will-change:transform}
-.float-stack .fc:nth-child(1){top:8px;left:50%;transform:translateX(-50%)}
-.float-stack .fc:nth-child(2){top:120px;left:6%;animation:bob 6s ease-in-out infinite}
-.float-stack .fc:nth-child(3){top:150px;right:2%;animation:bob 7s ease-in-out infinite .8s}
+.float-stack .fc:nth-child(1){top:0;left:28%;transform:translateX(-50%)}
+.float-stack .fc:nth-child(2){top:130px;left:0;animation:bob 6s ease-in-out infinite}
+.float-stack .fc:nth-child(3){top:170px;right:0;animation:bob 7s ease-in-out infinite .8s}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
-@media(max-width:860px){.hero-panel{grid-template-columns:1fr}.nav{align-items:flex-start}.wrap{padding:24px 18px}table{min-width:720px}.float-stack{height:auto;display:grid;gap:14px;perspective:none}.float-stack .fc{position:static;width:auto;transform:none!important;animation:none}}
+@media(max-width:860px){.home-hero,.hero-panel{grid-template-columns:1fr}.home-hero{padding:36px 0 20px}.home-hero .hero{text-align:center}.home-hero .hero h1,.home-hero .hero p{margin-left:auto;margin-right:auto}.home-hero .row{justify-content:center!important}.nav{align-items:flex-start}.wrap{padding:24px 18px}table{min-width:720px}.float-stack{height:auto;display:grid;gap:14px;perspective:none}.float-stack .fc{position:static;width:auto;transform:none!important;animation:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}.reveal{opacity:1;transform:none}}
 `;
 
@@ -142,20 +146,21 @@ export function landingPage(): string {
   return layout(
     "ProofClip: testimonial walls + social proof",
     `<div class="wrap" style="padding-top:8px">
-      <div class="hero">
-        <span class="eyebrow"><span class="dot"></span><span class="pill">Live &middot; built for creators &amp; small SaaS</span></span>
-        <h1>Turn customer love into <span class="g">website proof</span> and viral content.</h1>
-        <p>Collect testimonials, import review screenshots from anywhere, embed a wall of love, and turn each one into a share-ready social card. Free to start.</p>
-        <div class="row" style="justify-content:center">
-          <a class="btn" href="/signup">Start free</a>
-          <a class="btn ghost" href="/demo">See a live wall &rarr;</a>
+      <div class="home-hero">
+        <div class="hero">
+          <span class="eyebrow"><span class="dot"></span><span class="pill">Live &middot; built for creators &amp; small SaaS</span></span>
+          <h1>Turn customer love into <span class="g">website proof</span> and viral content.</h1>
+          <p>Collect testimonials, import review screenshots from anywhere, embed a wall of love, and turn each one into a share-ready social card. Free to start.</p>
+          <div class="row" style="justify-content:flex-start">
+            <a class="btn" href="/signup">Start free</a>
+            <a class="btn ghost" href="/demo">See a live wall &rarr;</a>
+          </div>
         </div>
-      </div>
-
-      <div class="float-stack reveal" style="margin-bottom:40px">
-        ${fc("Set up our wall in ten minutes and the social cards got 3x our normal engagement.", "Maya", "Founder, Notionly", 5)}
-        ${fc("Finally one place for every review screenshot. The embed just works.", "Dev", "@devbuilds", 5)}
-        ${fc("Closed two deals after adding the wall to our pricing page.", "Sara", "Indie SaaS", 5)}
+        <div class="float-stack reveal">
+          ${fc("Set up our wall in ten minutes and the social cards got 3x our normal engagement.", "Maya", "Founder, Notionly", 5)}
+          ${fc("Finally one place for every review screenshot. The embed just works.", "Dev", "@devbuilds", 5)}
+          ${fc("Closed two deals after adding the wall to our pricing page.", "Sara", "Indie SaaS", 5)}
+        </div>
       </div>
 
       <div class="section">
@@ -276,6 +281,25 @@ export function keyIssuedPage(apiKey: string, slug: string, base: string, checko
       </div>
       <div style="height:18px"></div>
       ${checkout}
+    </div>`,
+    { nav: false },
+  );
+}
+
+export function apiKeyResetPage(apiKey: string): string {
+  return layout(
+    "API key reset: ProofClip",
+    `<div class="wrap" style="max-width:620px">
+      <span class="eyebrow"><span class="dot"></span><span class="pill">API key reset</span></span>
+      <h1 style="font-size:36px;letter-spacing:-1px">Your new key is ready.</h1>
+      <div class="card" style="border-color:rgba(251,191,36,.4)">
+        <b>Save this API key now</b>
+        <p class="muted" style="margin:6px 0 10px">The old key no longer works. This new key is shown once, and your current browser session has already been updated.</p>
+        <pre id="apikey">${esc(apiKey)}</pre>
+        <button class="btn sm ghost" onclick="navigator.clipboard.writeText(document.getElementById('apikey').textContent);this.textContent='Copied'">Copy key</button>
+      </div>
+      <div style="height:18px"></div>
+      <a class="btn" href="/app">Back to dashboard</a>
     </div>`,
     { nav: false },
   );

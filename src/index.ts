@@ -16,6 +16,7 @@ import {
   signupPage,
   loginPage,
   keyIssuedPage,
+  apiKeyResetPage,
 } from "./pages";
 import { collectionForm, wallPage } from "./public";
 import { dashboardPage, cardStudioPage } from "./dashboard";
@@ -224,6 +225,17 @@ app.post("/login", async (c) => {
 app.get("/logout", (c) => {
   deleteCookie(c, SESSION, { path: "/" });
   return c.redirect("/");
+});
+
+app.post("/app/api-key/reset", async (c) => {
+  const account = await sessionAccount(c);
+  if (!account) return html(loginPage("Please log in."), 401);
+  const apiKey = newKey();
+  await c.env.DB.prepare("UPDATE accounts SET api_key = ? WHERE id = ?")
+    .bind(apiKey, account.id)
+    .run();
+  startSession(c, apiKey);
+  return c.html(apiKeyResetPage(apiKey));
 });
 
 app.post("/signup", async (c) => {
