@@ -9,7 +9,7 @@
     {
       "binding": "DB",
       "database_name": "proofclip",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "74128ac0-7daa-4055-801b-0dbc9638bdd1"
     }
   ],
   // Uploaded avatars + imported review screenshots.
@@ -17,6 +17,6 @@
   "observability": { "enabled": true },
   "vars": {
     // Public base URL the widget + cards point at. Override per environment.
-    "PUBLIC_BASE_URL": "http://localhost:8787"
+    "PUBLIC_BASE_URL": "https://proofclip.agentpostmortem.workers.dev"
   }
 }
