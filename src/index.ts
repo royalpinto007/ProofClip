@@ -1,0 +1,299 @@
+import { Hono } from "hono";
+import type { Env, Space, Testimonial } from "./types";
+import { planFor } from "./plans";
+import {
+  getAccountByEmail,
+  getAccountByKey,
+  getSpaceById,
+  getSpaceBySlug,
+  spacesForAccount,
+  testimonialsForSpace,
+  countTestimonials,
+} from "./db";
+import {
+  landingPage,
+  signupPage,
+  loginPage,
+  keyIssuedPage,
+} from "./pages";
+import { collectionForm, wallPage } from "./public";
+import { dashboardPage, cardStudioPage } from "./dashboard";
+import { WIDGET_JS, CARD_JS } from "./assets";
+import {
+  clampRating,
+  html,
+  json,
+  newId,
+  newKey,
+  now,
+  slugify,
+} from "./util";
+
+const app = new Hono<{ Bindings: Env }>();
+
+// ---------- helpers ----------
+async function uploadMedia(env: Env, file: File): Promise<string | null> {
+  if (!file || typeof file === "string" || file.size === 0) return null;
+  if (file.size > 5 * 1024 * 1024) return null; // 5MB cap
+  const ext = (file.type.split("/")[1] || "png").replace(/[^a-z0-9]/g, "");
+  const key = `media/${newId("img")}.${ext}`;
+  await env.MEDIA.put(key, await file.arrayBuffer(), {
+    httpMetadata: { contentType: file.type || "image/png" },
+  });
+  return `/${key}`;
+}
+
+async function recordEvent(
+  env: Env,
+  spaceId: string,
+  type: "view" | "click",
+) {
+  await env.DB.prepare(
+    "INSERT INTO events (id, space_id, type, created_at) VALUES (?,?,?,?)",
+  )
+    .bind(newId("ev"), spaceId, type, now())
+    .run();
+}
+
+// ---------- public marketing ----------
+app.get("/", (c) => html(landingPage()));
+app.get("/signup", (c) => html(signupPage()));
+app.get("/login", (c) => html(loginPage()));
+
+app.post("/signup", async (c) => {
+  const body = await c.req.parseBody();
+  const email = String(body.email || "").trim().toLowerCase();
+  const name = String(body.name || "").trim() || "My wall";
+  if (!email) return html(signupPage(), 400);
+  if (await getAccountByEmail(c.env, email)) {
+    return html(loginPage("That email already has an account. Use your API key to log in."), 409);
+  }
+  const account = {
+    id: newId("acc"),
+    email,
+    api_key: newKey(),
+    plan: "free",
+    created_at: now(),
+  };
+  await c.env.DB.prepare(
+    "INSERT INTO accounts (id,email,api_key,plan,created_at) VALUES (?,?,?,?,?)",
+  )
+    .bind(account.id, account.email, account.api_key, account.plan, account.created_at)
+    .run();
+  const slug = slugify(name);
+  await c.env.DB.prepare(
+    "INSERT INTO spaces (id,account_id,slug,name,accent,branding,created_at) VALUES (?,?,?,?,?,?,?)",
+  )
+    .bind(newId("sp"), account.id, slug, name, "#6366f1", 1, now())
+    .run();
+  return html(keyIssuedPage(account.api_key, slug, c.env.PUBLIC_BASE_URL));
+});
+
+// ---------- demo (no auth, sample data) ----------
+app.get("/demo", (c) => {
+  const space: Space = {
+    id: "demo", account_id: "demo", slug: "demo", name: "Acme Templates",
+    accent: "#6366f1", logo_url: null, branding: 1, created_at: now(),
+  };
+  const sample = (text: string, name: string, company: string, rating: number): Testimonial => ({
+    id: newId("t"), space_id: "demo", source: "form", name, handle: null,
+    company, avatar_url: null, rating, text, image_url: null,
+    status: "approved", permission: 1, created_at: now(),
+  });
+  const items = [
+    sample("Set up our wall in ten minutes and the social cards got 3x the engagement of our normal posts.", "Maya R.", "Founder, Notionly", 5),
+    sample("Finally one place for every review screenshot. The embed just works.", "Dev P.", "@devbuilds", 5),
+    sample("Closed two deals after adding the wall to our pricing page.", "Sara K.", "Indie SaaS", 5),
+  ];
+  return html(wallPage(space, items));
+});
+
+// ---------- dashboard ----------
+app.get("/app", async (c) => {
+  const account = await getAccountByKey(c.env, c.req.query("key") || "");
+  if (!account) return html(loginPage("Invalid or missing API key."), 401);
+  const spaces = await spacesForAccount(c.env, account.id);
+  if (!spaces.length) return html(loginPage("No workspace found."), 404);
+  const wantId = c.req.query("space");
+  const space = spaces.find((s) => s.id === wantId) ?? spaces[0];
+  const testimonials = await testimonialsForSpace(c.env, space.id);
+  const approved = testimonials.filter((t) => t.status === "approved").length;
+  const pending = testimonials.filter((t) => t.status === "pending").length;
+  const ev = await c.env.DB.prepare(
+    "SELECT type, COUNT(*) AS n FROM events WHERE space_id = ? GROUP BY type",
+  ).bind(space.id).all<{ type: string; n: number }>();
+  const views = ev.results?.find((r) => r.type === "view")?.n ?? 0;
+  const clicks = ev.results?.find((r) => r.type === "click")?.n ?? 0;
+  return html(dashboardPage({
+    account, spaces, space, testimonials,
+    counts: { total: testimonials.length, approved, pending },
+    analytics: { views, clicks },
+    base: c.env.PUBLIC_BASE_URL,
+  }));
+});
+
+const back = (c: any, key: string, spaceId: string) =>
+  c.redirect(`/app?key=${encodeURIComponent(key)}&space=${encodeURIComponent(spaceId)}`);
+
+app.post("/app/testimonial/:action", async (c) => {
+  const action = c.req.param("action");
+  const body = await c.req.parseBody();
+  const account = await getAccountByKey(c.env, String(body.key || ""));
+  if (!account) return html(loginPage("Invalid key."), 401);
+  const space = await getSpaceById(c.env, String(body.space || ""));
+  if (!space || space.account_id !== account.id) return c.text("forbidden", 403);
+  const id = String(body.id || "");
+  if (action === "delete") {
+    await c.env.DB.prepare("DELETE FROM testimonials WHERE id = ? AND space_id = ?").bind(id, space.id).run();
+  } else if (action === "approve" || action === "hide") {
+    const status = action === "approve" ? "approved" : "hidden";
+    await c.env.DB.prepare("UPDATE testimonials SET status = ? WHERE id = ? AND space_id = ?").bind(status, id, space.id).run();
+  }
+  return back(c, account.api_key, space.id);
+});
+
+app.post("/app/import", async (c) => {
+  const body = await c.req.parseBody();
+  const account = await getAccountByKey(c.env, String(body.key || ""));
+  if (!account) return html(loginPage("Invalid key."), 401);
+  const space = await getSpaceById(c.env, String(body.space || ""));
+  if (!space || space.account_id !== account.id) return c.text("forbidden", 403);
+  const plan = planFor(account.plan);
+  if ((await countTestimonials(c.env, space.id)) >= plan.maxTestimonials) {
+    return back(c, account.api_key, space.id);
+  }
+  const imageUrl = await uploadMedia(c.env, body.image as File);
+  const text = String(body.text || "").trim();
+  if (!imageUrl && !text) return back(c, account.api_key, space.id);
+  await c.env.DB.prepare(
+    "INSERT INTO testimonials (id,space_id,source,name,text,image_url,status,permission,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+  ).bind(
+    newId("t"), space.id, "screenshot", String(body.name || "") || null,
+    text || null, imageUrl, "approved", 1, now(),
+  ).run();
+  return back(c, account.api_key, space.id);
+});
+
+app.post("/app/settings", async (c) => {
+  const body = await c.req.parseBody();
+  const account = await getAccountByKey(c.env, String(body.key || ""));
+  if (!account) return html(loginPage("Invalid key."), 401);
+  const space = await getSpaceById(c.env, String(body.space || ""));
+  if (!space || space.account_id !== account.id) return c.text("forbidden", 403);
+  const plan = planFor(account.plan);
+  // branding can only be turned OFF on plans that allow it
+  let branding = body.branding ? 1 : 0;
+  if (!plan.canRemoveBranding) branding = 1;
+  const accent = String(body.accent || space.accent).slice(0, 9);
+  const name = String(body.name || space.name).slice(0, 80);
+  const logo = String(body.logo_url || "").slice(0, 500) || null;
+  await c.env.DB.prepare(
+    "UPDATE spaces SET name=?, accent=?, logo_url=?, branding=? WHERE id=?",
+  ).bind(name, accent, logo, branding, space.id).run();
+  return back(c, account.api_key, space.id);
+});
+
+app.get("/app/card", async (c) => {
+  const account = await getAccountByKey(c.env, c.req.query("key") || "");
+  if (!account) return html(loginPage("Invalid key."), 401);
+  if (!planFor(account.plan).canUseCards) {
+    return html(loginPage("The card generator is a Pro feature. Upgrade to use it."), 403);
+  }
+  const t = await c.env.DB.prepare("SELECT * FROM testimonials WHERE id = ?")
+    .bind(c.req.query("id") || "").first<Testimonial>();
+  if (!t) return c.text("not found", 404);
+  const space = await getSpaceById(c.env, t.space_id);
+  if (!space || space.account_id !== account.id) return c.text("forbidden", 403);
+  return html(cardStudioPage(t, space, c.env.PUBLIC_BASE_URL));
+});
+
+// ---------- public collection + wall ----------
+app.get("/c/:slug", async (c) => {
+  const space = await getSpaceBySlug(c.env, c.req.param("slug"));
+  if (!space) return c.text("not found", 404);
+  return html(collectionForm(space, c.req.query("ok") === "1"));
+});
+
+app.post("/c/:slug", async (c) => {
+  const space = await getSpaceBySlug(c.env, c.req.param("slug"));
+  if (!space) return c.text("not found", 404);
+  const plan = planFor((await c.env.DB.prepare("SELECT plan FROM accounts WHERE id=?").bind(space.account_id).first<{ plan: string }>())?.plan || "free");
+  if ((await countTestimonials(c.env, space.id)) >= plan.maxTestimonials) {
+    return html(collectionForm(space, true)); // silently accept-cap; owner sees nothing new
+  }
+  const body = await c.req.parseBody();
+  const text = String(body.text || "").trim();
+  if (!text) return html(collectionForm(space), 400);
+  const avatarUrl = await uploadMedia(c.env, body.avatar as File);
+  await c.env.DB.prepare(
+    "INSERT INTO testimonials (id,space_id,source,name,company,avatar_url,rating,text,status,permission,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+  ).bind(
+    newId("t"), space.id, "form",
+    String(body.name || "") || null, String(body.company || "") || null,
+    avatarUrl, clampRating(body.rating), text, "pending",
+    body.permission ? 1 : 0, now(),
+  ).run();
+  return c.redirect(`/c/${space.slug}?ok=1`);
+});
+
+app.get("/w/:slug", async (c) => {
+  const space = await getSpaceBySlug(c.env, c.req.param("slug"));
+  if (!space) return c.text("not found", 404);
+  const items = await testimonialsForSpace(c.env, space.id, "approved");
+  return html(wallPage(space, items));
+});
+
+// ---------- widget API ----------
+app.get("/api/wall/:slug", async (c) => {
+  const space = await getSpaceBySlug(c.env, c.req.param("slug"));
+  if (!space) return json({ error: "not found" }, 404);
+  const items = await testimonialsForSpace(c.env, space.id, "approved");
+  const base = c.env.PUBLIC_BASE_URL;
+  return new Response(
+    JSON.stringify({
+      space: space.slug,
+      accent: space.accent,
+      branding: !!space.branding,
+      testimonials: items.map((t) => ({
+        text: t.text,
+        name: t.name,
+        company: t.company,
+        rating: t.rating,
+        image_url: t.image_url ? base + t.image_url : null,
+        avatar_url: t.avatar_url ? base + t.avatar_url : null,
+      })),
+    }),
+    { headers: { "content-type": "application/json", "access-control-allow-origin": "*" } },
+  );
+});
+
+app.post("/api/event", async (c) => {
+  let data: any = {};
+  try { data = await c.req.json(); } catch { /* sendBeacon blob */ }
+  const slug = String(data.slug || "");
+  const type = data.type === "click" ? "click" : "view";
+  const space = await getSpaceBySlug(c.env, slug);
+  if (space) await recordEvent(c.env, space.id, type);
+  return new Response("", { status: 204, headers: { "access-control-allow-origin": "*" } });
+});
+
+// ---------- static assets + media ----------
+app.get("/widget.js", () =>
+  new Response(WIDGET_JS, { headers: { "content-type": "application/javascript", "cache-control": "public,max-age=300" } }));
+app.get("/card.js", () =>
+  new Response(CARD_JS, { headers: { "content-type": "application/javascript", "cache-control": "public,max-age=300" } }));
+
+app.get("/media/:name", async (c) => {
+  const obj = await c.env.MEDIA.get(`media/${c.req.param("name")}`);
+  if (!obj) return c.text("not found", 404);
+  return new Response(obj.body, {
+    headers: {
+      "content-type": obj.httpMetadata?.contentType || "image/png",
+      "cache-control": "public,max-age=31536000,immutable",
+    },
+  });
+});
+
+app.notFound((c) => c.text("Not found", 404));
+
+export default app;

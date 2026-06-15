@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "proofclip",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-25",
+  "compatibility_flags": ["nodejs_compat"],
+  // Relational store (free D1 tier). Run `npm run db:init:remote` after creating it.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "proofclip",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+  // Uploaded avatars + imported review screenshots.
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "proofclip-media" }],
+  "observability": { "enabled": true },
+  "vars": {
+    // Public base URL the widget + cards point at. Override per environment.
+    "PUBLIC_BASE_URL": "http://localhost:8787"
+  }
+}
