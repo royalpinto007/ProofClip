@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import type { Env, Space, Testimonial } from "./types";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import type { Account, Env, Space, Testimonial } from "./types";
 import { planFor } from "./plans";
 import {
   getAccountByEmail,
@@ -31,6 +32,37 @@ import {
 
 const app = new Hono<{ Bindings: Env }>();
 
+// ---------- session (httpOnly cookie, key never in URL) ----------
+const SESSION = "pc_session";
+
+function startSession(c: any, apiKey: string) {
+  setCookie(c, SESSION, apiKey, {
+    httpOnly: true,
+    secure: String(c.env.PUBLIC_BASE_URL).startsWith("https"),
+    sameSite: "Lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 60, // 60 days
+  });
+}
+
+async function sessionAccount(c: any): Promise<Account | null> {
+  const key = getCookie(c, SESSION);
+  if (!key) return null;
+  return getAccountByKey(c.env, key);
+}
+
+// Resolve the account + an authorized space from the session cookie.
+async function authedSpace(
+  c: any,
+  spaceId: string,
+): Promise<{ account: Account; space: Space } | null> {
+  const account = await sessionAccount(c);
+  if (!account) return null;
+  const space = await getSpaceById(c.env, spaceId);
+  if (!space || space.account_id !== account.id) return null;
+  return { account, space };
+}
+
 // ---------- helpers ----------
 async function uploadMedia(env: Env, file: File): Promise<string | null> {
   if (!file || typeof file === "string" || file.size === 0) return null;
@@ -60,6 +92,21 @@ app.get("/", (c) => html(landingPage()));
 app.get("/signup", (c) => html(signupPage()));
 app.get("/login", (c) => html(loginPage()));
 
+// Exchange an API key for a session cookie (key never lands in the URL).
+app.post("/login", async (c) => {
+  const body = await c.req.parseBody();
+  const key = String(body.key || "").trim();
+  const account = await getAccountByKey(c.env, key);
+  if (!account) return html(loginPage("That key is not valid. Check and try again."), 401);
+  startSession(c, key);
+  return c.redirect("/app");
+});
+
+app.get("/logout", (c) => {
+  deleteCookie(c, SESSION, { path: "/" });
+  return c.redirect("/");
+});
+
 app.post("/signup", async (c) => {
   const body = await c.req.parseBody();
   const email = String(body.email || "").trim().toLowerCase();
@@ -86,7 +133,9 @@ app.post("/signup", async (c) => {
   )
     .bind(newId("sp"), account.id, slug, name, "#6366f1", 1, now())
     .run();
-  return html(keyIssuedPage(account.api_key, slug, c.env.PUBLIC_BASE_URL));
+  startSession(c, account.api_key); // log them straight in
+  // Return via the Hono context so the Set-Cookie header is preserved.
+  return c.html(keyIssuedPage(account.api_key, slug, c.env.PUBLIC_BASE_URL));
 });
 
 // ---------- demo (no auth, sample data) ----------
@@ -110,8 +159,18 @@ app.get("/demo", (c) => {
 
 // ---------- dashboard ----------
 app.get("/app", async (c) => {
-  const account = await getAccountByKey(c.env, c.req.query("key") || "");
-  if (!account) return html(loginPage("Invalid or missing API key."), 401);
+  // Migrate any legacy ?key=... link into a cookie, then strip it from the URL.
+  const legacy = c.req.query("key");
+  if (legacy) {
+    const acc = await getAccountByKey(c.env, legacy);
+    if (acc) {
+      startSession(c, legacy);
+      const sp = c.req.query("space");
+      return c.redirect(sp ? `/app?space=${encodeURIComponent(sp)}` : "/app");
+    }
+  }
+  const account = await sessionAccount(c);
+  if (!account) return html(loginPage("Please log in with your API key."), 401);
   const spaces = await spacesForAccount(c.env, account.id);
   if (!spaces.length) return html(loginPage("No workspace found."), 404);
   const wantId = c.req.query("space");
@@ -132,16 +191,15 @@ app.get("/app", async (c) => {
   }));
 });
 
-const back = (c: any, key: string, spaceId: string) =>
-  c.redirect(`/app?key=${encodeURIComponent(key)}&space=${encodeURIComponent(spaceId)}`);
+const back = (c: any, spaceId: string) =>
+  c.redirect(`/app?space=${encodeURIComponent(spaceId)}`);
 
 app.post("/app/testimonial/:action", async (c) => {
   const action = c.req.param("action");
   const body = await c.req.parseBody();
-  const account = await getAccountByKey(c.env, String(body.key || ""));
-  if (!account) return html(loginPage("Invalid key."), 401);
-  const space = await getSpaceById(c.env, String(body.space || ""));
-  if (!space || space.account_id !== account.id) return c.text("forbidden", 403);
+  const auth = await authedSpace(c, String(body.space || ""));
+  if (!auth) return html(loginPage("Please log in."), 401);
+  const { space } = auth;
   const id = String(body.id || "");
   if (action === "delete") {
     await c.env.DB.prepare("DELETE FROM testimonials WHERE id = ? AND space_id = ?").bind(id, space.id).run();
@@ -149,37 +207,35 @@ app.post("/app/testimonial/:action", async (c) => {
     const status = action === "approve" ? "approved" : "hidden";
     await c.env.DB.prepare("UPDATE testimonials SET status = ? WHERE id = ? AND space_id = ?").bind(status, id, space.id).run();
   }
-  return back(c, account.api_key, space.id);
+  return back(c, space.id);
 });
 
 app.post("/app/import", async (c) => {
   const body = await c.req.parseBody();
-  const account = await getAccountByKey(c.env, String(body.key || ""));
-  if (!account) return html(loginPage("Invalid key."), 401);
-  const space = await getSpaceById(c.env, String(body.space || ""));
-  if (!space || space.account_id !== account.id) return c.text("forbidden", 403);
+  const auth = await authedSpace(c, String(body.space || ""));
+  if (!auth) return html(loginPage("Please log in."), 401);
+  const { account, space } = auth;
   const plan = planFor(account.plan);
   if ((await countTestimonials(c.env, space.id)) >= plan.maxTestimonials) {
-    return back(c, account.api_key, space.id);
+    return back(c, space.id);
   }
   const imageUrl = await uploadMedia(c.env, body.image as File);
   const text = String(body.text || "").trim();
-  if (!imageUrl && !text) return back(c, account.api_key, space.id);
+  if (!imageUrl && !text) return back(c, space.id);
   await c.env.DB.prepare(
     "INSERT INTO testimonials (id,space_id,source,name,text,image_url,status,permission,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
   ).bind(
     newId("t"), space.id, "screenshot", String(body.name || "") || null,
     text || null, imageUrl, "approved", 1, now(),
   ).run();
-  return back(c, account.api_key, space.id);
+  return back(c, space.id);
 });
 
 app.post("/app/settings", async (c) => {
   const body = await c.req.parseBody();
-  const account = await getAccountByKey(c.env, String(body.key || ""));
-  if (!account) return html(loginPage("Invalid key."), 401);
-  const space = await getSpaceById(c.env, String(body.space || ""));
-  if (!space || space.account_id !== account.id) return c.text("forbidden", 403);
+  const auth = await authedSpace(c, String(body.space || ""));
+  if (!auth) return html(loginPage("Please log in."), 401);
+  const { account, space } = auth;
   const plan = planFor(account.plan);
   // branding can only be turned OFF on plans that allow it
   let branding = body.branding ? 1 : 0;
@@ -190,12 +246,12 @@ app.post("/app/settings", async (c) => {
   await c.env.DB.prepare(
     "UPDATE spaces SET name=?, accent=?, logo_url=?, branding=? WHERE id=?",
   ).bind(name, accent, logo, branding, space.id).run();
-  return back(c, account.api_key, space.id);
+  return back(c, space.id);
 });
 
 app.get("/app/card", async (c) => {
-  const account = await getAccountByKey(c.env, c.req.query("key") || "");
-  if (!account) return html(loginPage("Invalid key."), 401);
+  const account = await sessionAccount(c);
+  if (!account) return html(loginPage("Please log in."), 401);
   if (!planFor(account.plan).canUseCards) {
     return html(loginPage("The card generator is a Pro feature. Upgrade to use it."), 403);
   }

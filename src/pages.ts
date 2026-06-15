@@ -36,7 +36,7 @@ label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
 .muted{color:var(--muted)}
 .hero{padding:84px 0 48px;text-align:center;position:relative}
 .hero h1{font-size:clamp(34px,6vw,62px);line-height:1.05;margin:0 auto 18px;max-width:14ch;letter-spacing:-1.5px;font-weight:800}
-.hero h1 .g{background:linear-gradient(100deg,#fff 10%,var(--accent2) 55%,var(--accent) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.g{background:linear-gradient(100deg,#fff 10%,var(--accent2) 55%,var(--accent) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .hero p{font-size:clamp(16px,2vw,20px);color:var(--muted);max-width:620px;margin:0 auto 28px}
 .pill{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:5px 13px;color:var(--muted);background:rgba(255,255,255,.03)}
 .eyebrow{display:inline-flex;align-items:center;gap:8px;margin-bottom:20px}
@@ -221,12 +221,13 @@ export function loginPage(error?: string): string {
     `<div class="wrap" style="max-width:460px">
       <h1>Open dashboard</h1>
       ${error ? `<p style="color:#f87171">${esc(error)}</p>` : ""}
-      <form method="get" action="/app">
+      <form method="post" action="/login">
         <label>API key</label>
-        <input name="key" required placeholder="pk_...">
+        <input name="key" type="password" required placeholder="pk_..." autocomplete="current-password">
         <div style="height:14px"></div>
-        <button class="btn" type="submit">Open</button>
+        <button class="btn" type="submit">Open dashboard</button>
       </form>
+      <p class="muted" style="margin-top:14px">No account yet? <a href="/signup">Create one free</a></p>
     </div>`,
   );
 }
@@ -234,13 +235,22 @@ export function loginPage(error?: string): string {
 export function keyIssuedPage(apiKey: string, slug: string, base: string): string {
   return layout(
     "Account created: ProofClip",
-    `<div class="wrap" style="max-width:560px">
-      <h1>You are in.</h1>
-      <p class="muted">This is your API key. It is your login and it is shown once. Save it now.</p>
-      <pre>${esc(apiKey)}</pre>
-      <p>Your collection link to share with customers:</p>
-      <pre>${esc(base)}/c/${esc(slug)}</pre>
-      <a class="btn" href="/app?key=${encodeURIComponent(apiKey)}">Go to dashboard</a>
+    `<div class="wrap" style="max-width:600px">
+      <span class="eyebrow"><span class="dot"></span><span class="pill">Account created</span></span>
+      <h1 style="font-size:36px;letter-spacing:-1px">You are in.</h1>
+      <div class="card" style="border-color:rgba(251,191,36,.4)">
+        <b>Save your API key now</b>
+        <p class="muted" style="margin:6px 0 10px">This is your login. It is shown once. Store it in a password manager: anyone with it can access your dashboard.</p>
+        <pre id="apikey">${esc(apiKey)}</pre>
+        <button class="btn sm ghost" onclick="navigator.clipboard.writeText(document.getElementById('apikey').textContent);this.textContent='Copied'">Copy key</button>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <b>Your collection link</b>
+        <p class="muted" style="margin:6px 0 10px">Share this with customers to gather testimonials.</p>
+        <pre>${esc(base)}/c/${esc(slug)}</pre>
+      </div>
+      <div style="height:18px"></div>
+      <a class="btn" href="/app">Go to dashboard &rarr;</a>
     </div>`,
     { nav: false },
   );
