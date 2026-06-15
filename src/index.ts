@@ -256,19 +256,6 @@ app.post("/login", async (c) => {
   return c.redirect("/app");
 });
 
-app.post("/login/reset", async (c) => {
-  const body = await c.req.parseBody();
-  const key = String(body.key || "").trim();
-  const account = await getAccountByKey(c.env, key);
-  if (!account) return html(loginPage("That key is not valid, so it could not be reset."), 401);
-  const apiKey = newKey();
-  await c.env.DB.prepare("UPDATE accounts SET api_key = ? WHERE id = ?")
-    .bind(apiKey, account.id)
-    .run();
-  startSession(c, apiKey);
-  return c.html(apiKeyResetPage(apiKey));
-});
-
 app.post("/login/recover", async (c) => {
   const body = await c.req.parseBody();
   const email = String(body.email || "").trim().toLowerCase();

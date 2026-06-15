@@ -255,16 +255,6 @@ export function loginPage(error?: string): string {
         <button class="btn" type="submit">Open dashboard</button>
       </form>
       <div class="card" style="margin-top:14px">
-        <b>Rotate API key</b>
-        <p class="muted" style="margin:6px 0 0;font-size:14px">Have your current key but want a fresh one? Reset it here. The old key stops working immediately.</p>
-        <form method="post" action="/login/reset" onsubmit="return confirm('Reset this API key? The old key will stop working immediately.')">
-          <label>Current API key</label>
-          <input name="key" type="password" required placeholder="pk_..." autocomplete="current-password">
-          <div style="height:12px"></div>
-          <button class="btn ghost" type="submit">Reset API key</button>
-        </form>
-      </div>
-      <div class="card" style="margin-top:14px">
         <b>Lost your API key?</b>
         <p class="muted" style="margin:6px 0 0;font-size:14px">Enter the account email and we will send a one-time reset link if it exists.</p>
         <form method="post" action="/login/recover">
