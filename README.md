@@ -106,6 +106,18 @@ You can also send `account_id` or `client_reference_id`; checkout links receive
 both the account id and prefilled email as query params where providers support
 them.
 
+For Gumroad, create three products whose name, permalink, or variant contains
+`ProofClip Starter`, `ProofClip Pro`, or `ProofClip Agency`. Then point Gumroad
+sale pings at:
+
+```text
+$PUBLIC_BASE_URL/api/billing/gumroad?secret=$BILLING_WEBHOOK_SECRET
+```
+
+The Gumroad route accepts Gumroad's form-encoded sale payload, infers the plan
+from product/variant fields, and upgrades the ProofClip account matching the
+buyer email.
+
 ## Not yet built (paid-tier roadmap)
 
 Video testimonials, custom domains wiring, team seats, provider-specific

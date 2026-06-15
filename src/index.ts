@@ -97,6 +97,57 @@ function constantTimeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+async function parseWebhookBody(c: any): Promise<Record<string, string>> {
+  const type = c.req.header("content-type") || "";
+  if (type.includes("application/json")) {
+    const data = await c.req.json();
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(data)) out[key] = String(value ?? "");
+    return out;
+  }
+  const form = await c.req.parseBody();
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(form)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
+}
+
+function inferPlan(data: Record<string, string>): string {
+  const haystack = [
+    data.plan,
+    data.product,
+    data.product_name,
+    data.product_permalink,
+    data.permalink,
+    data.custom_permalink,
+    data.variants,
+    data.variant,
+    data.variant_name,
+    data.custom_fields,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/\bagency\b|proofclip-agency/.test(haystack)) return "agency";
+  if (/\bpro\b|proofclip-pro/.test(haystack)) return "pro";
+  if (/\bstarter\b|proofclip-starter/.test(haystack)) return "starter";
+  return "";
+}
+
+async function activatePlan(
+  env: Env,
+  plan: string,
+  accountId: string,
+  email: string,
+): Promise<number> {
+  const query = accountId
+    ? env.DB.prepare("UPDATE accounts SET plan = ? WHERE id = ?").bind(plan, accountId)
+    : env.DB.prepare("UPDATE accounts SET plan = ? WHERE email = ?").bind(plan, email);
+  const result = await query.run();
+  return result.meta.changes ?? 0;
+}
+
 // ---------- public marketing ----------
 app.get("/", (c) => html(landingPage()));
 app.get("/signup", (c) => html(signupPage(c.req.query("plan"))));
@@ -128,22 +179,36 @@ app.post("/api/billing/activate", async (c) => {
   const secret = c.env.BILLING_WEBHOOK_SECRET;
   const provided = c.req.header("x-proofclip-secret") || c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
   if (!secret || !provided || !constantTimeEqual(provided, secret)) return json({ error: "unauthorized" }, 401);
-  let body: any = {};
+  let body: Record<string, string> = {};
   try {
-    body = await c.req.json();
+    body = await parseWebhookBody(c);
   } catch {
-    return json({ error: "invalid json" }, 400);
+    return json({ error: "invalid body" }, 400);
   }
   const plan = String(body.plan || body.product || "").toLowerCase();
   if (!(plan in PLANS) || plan === "free") return json({ error: "invalid plan" }, 400);
   const accountId = String(body.account_id || body.client_reference_id || "").trim();
   const email = String(body.email || body.customer_email || "").trim().toLowerCase();
-  const query = accountId
-    ? c.env.DB.prepare("UPDATE accounts SET plan = ? WHERE id = ?").bind(plan, accountId)
-    : c.env.DB.prepare("UPDATE accounts SET plan = ? WHERE email = ?").bind(plan, email);
-  const result = await query.run();
-  if (!result.meta.changes) return json({ error: "account not found" }, 404);
+  if (!(await activatePlan(c.env, plan, accountId, email))) return json({ error: "account not found" }, 404);
   return json({ ok: true, plan });
+});
+
+app.post("/api/billing/gumroad", async (c) => {
+  const secret = c.env.BILLING_WEBHOOK_SECRET;
+  const provided = c.req.query("secret") || c.req.header("x-proofclip-secret") || "";
+  if (!secret || !provided || !constantTimeEqual(provided, secret)) return json({ error: "unauthorized" }, 401);
+  let body: Record<string, string> = {};
+  try {
+    body = await parseWebhookBody(c);
+  } catch {
+    return json({ error: "invalid body" }, 400);
+  }
+  const plan = inferPlan(body);
+  if (!plan || !(plan in PLANS)) return json({ error: "unknown gumroad plan" }, 400);
+  const email = String(body.email || body.purchaser_email || body.customer_email || "").trim().toLowerCase();
+  const accountId = String(body.client_reference_id || body.account_id || "").trim();
+  if (!(await activatePlan(c.env, plan, accountId, email))) return json({ error: "account not found" }, 404);
+  return json({ ok: true, provider: "gumroad", plan });
 });
 
 // Exchange an API key for a session cookie (key never lands in the URL).
