@@ -58,3 +58,15 @@ CREATE TABLE IF NOT EXISTS events (
   created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_space ON events(space_id, type);
+
+CREATE TABLE IF NOT EXISTS api_key_resets (
+  id          TEXT PRIMARY KEY,
+  account_id  TEXT NOT NULL,
+  token_hash  TEXT NOT NULL UNIQUE,
+  expires_at  INTEGER NOT NULL,
+  used_at     INTEGER,
+  created_at  INTEGER NOT NULL,
+  FOREIGN KEY (account_id) REFERENCES accounts(id)
+);
+CREATE INDEX IF NOT EXISTS idx_api_key_resets_token ON api_key_resets(token_hash);
+CREATE INDEX IF NOT EXISTS idx_api_key_resets_account ON api_key_resets(account_id);

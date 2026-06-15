@@ -264,6 +264,16 @@ export function loginPage(error?: string): string {
           <button class="btn ghost" type="submit">Reset API key</button>
         </form>
       </div>
+      <div class="card" style="margin-top:14px">
+        <b>Lost your API key?</b>
+        <p class="muted" style="margin:6px 0 0;font-size:14px">Enter the account email and we will send a one-time reset link if it exists.</p>
+        <form method="post" action="/login/recover">
+          <label>Account email</label>
+          <input name="email" type="email" required placeholder="you@brand.com" autocomplete="email">
+          <div style="height:12px"></div>
+          <button class="btn ghost" type="submit">Email reset link</button>
+        </form>
+      </div>
       <p class="muted" style="margin-top:14px">No account yet? <a href="/signup">Create one free</a></p>
     </div>`,
   );
@@ -310,6 +320,35 @@ export function apiKeyResetPage(apiKey: string): string {
       </div>
       <div style="height:18px"></div>
       <a class="btn" href="/app">Back to dashboard</a>
+    </div>`,
+    { nav: false },
+  );
+}
+
+export function recoverySentPage(): string {
+  return layout(
+    "Check your email: ProofClip",
+    `<div class="wrap" style="max-width:560px">
+      <span class="eyebrow"><span class="dot"></span><span class="pill">Recovery email sent</span></span>
+      <h1 style="font-size:36px;letter-spacing:-1px">Check your email.</h1>
+      <p class="muted">If that email belongs to a ProofClip account, a one-time reset link is on the way. It expires in 30 minutes.</p>
+      <a class="btn" href="/login">Back to login</a>
+    </div>`,
+  );
+}
+
+export function recoveryConfirmPage(token: string, error?: string): string {
+  return layout(
+    "Reset API key: ProofClip",
+    `<div class="wrap" style="max-width:560px">
+      <span class="eyebrow"><span class="dot"></span><span class="pill">Lost key recovery</span></span>
+      <h1 style="font-size:36px;letter-spacing:-1px">Reset your API key.</h1>
+      ${error ? `<p style="color:#f87171">${esc(error)}</p>` : `<p class="muted">This will create a new API key and invalidate the old one immediately.</p>`}
+      <form class="card" method="post" action="/login/recover/confirm" onsubmit="return confirm('Reset your API key? The old key will stop working immediately.')">
+        <input type="hidden" name="token" value="${esc(token)}">
+        <button class="btn" type="submit" ${error ? "disabled" : ""}>Create new API key</button>
+      </form>
+      <p class="muted" style="margin-top:14px"><a href="/login">Back to login</a></p>
     </div>`,
     { nav: false },
   );

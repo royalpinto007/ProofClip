@@ -17,12 +17,15 @@ import {
   loginPage,
   keyIssuedPage,
   apiKeyResetPage,
+  recoverySentPage,
+  recoveryConfirmPage,
 } from "./pages";
 import { collectionForm, wallPage } from "./public";
 import { dashboardPage, cardStudioPage } from "./dashboard";
 import { WIDGET_JS, CARD_JS } from "./assets";
 import {
   clampRating,
+  esc,
   html,
   json,
   newId,
@@ -96,6 +99,37 @@ function constantTimeEqual(a: string, b: string): boolean {
   const len = Math.max(aa.length, bb.length);
   for (let i = 0; i < len; i++) diff |= (aa[i] || 0) ^ (bb[i] || 0);
   return diff === 0;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function sendRecoveryEmail(env: Env, to: string, link: string) {
+  if (!env.RESEND_API_KEY) return;
+  const from = env.EMAIL_FROM || "ProofClip <noreply@agentpostmortem.com>";
+  const htmlBody = `
+    <p>You asked to reset your ProofClip API key.</p>
+    <p><a href="${esc(link)}">Create a new API key</a></p>
+    <p>This link expires in 30 minutes. If you did not request this, ignore this email.</p>
+  `;
+  const text = `You asked to reset your ProofClip API key.\n\nCreate a new key: ${link}\n\nThis link expires in 30 minutes. If you did not request this, ignore this email.`;
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject: "Reset your ProofClip API key",
+      html: htmlBody,
+      text,
+    }),
+  });
 }
 
 async function parseWebhookBody(c: any): Promise<Record<string, string>> {
@@ -231,6 +265,61 @@ app.post("/login/reset", async (c) => {
   await c.env.DB.prepare("UPDATE accounts SET api_key = ? WHERE id = ?")
     .bind(apiKey, account.id)
     .run();
+  startSession(c, apiKey);
+  return c.html(apiKeyResetPage(apiKey));
+});
+
+app.post("/login/recover", async (c) => {
+  const body = await c.req.parseBody();
+  const email = String(body.email || "").trim().toLowerCase();
+  const account = email ? await getAccountByEmail(c.env, email) : null;
+  if (account) {
+    const token = newKey();
+    const tokenHash = await sha256Hex(token);
+    const expiresAt = now() + 30 * 60 * 1000;
+    await c.env.DB.prepare("DELETE FROM api_key_resets WHERE account_id = ? OR expires_at < ? OR used_at IS NOT NULL")
+      .bind(account.id, now())
+      .run();
+    await c.env.DB.prepare(
+      "INSERT INTO api_key_resets (id, account_id, token_hash, expires_at, created_at) VALUES (?,?,?,?,?)",
+    )
+      .bind(newId("rst"), account.id, tokenHash, expiresAt, now())
+      .run();
+    const link = `${c.env.PUBLIC_BASE_URL}/login/recover?token=${encodeURIComponent(token)}`;
+    c.executionCtx.waitUntil(sendRecoveryEmail(c.env, account.email, link));
+  }
+  return html(recoverySentPage());
+});
+
+app.get("/login/recover", async (c) => {
+  const token = String(c.req.query("token") || "").trim();
+  if (!token) return html(recoveryConfirmPage("", "This reset link is missing its token."), 400);
+  const tokenHash = await sha256Hex(token);
+  const reset = await c.env.DB.prepare(
+    "SELECT id FROM api_key_resets WHERE token_hash = ? AND expires_at > ? AND used_at IS NULL",
+  )
+    .bind(tokenHash, now())
+    .first<{ id: string }>();
+  if (!reset) return html(recoveryConfirmPage("", "This reset link is invalid or expired."), 400);
+  return html(recoveryConfirmPage(token));
+});
+
+app.post("/login/recover/confirm", async (c) => {
+  const body = await c.req.parseBody();
+  const token = String(body.token || "").trim();
+  const tokenHash = await sha256Hex(token);
+  const reset = await c.env.DB.prepare(
+    "SELECT id, account_id FROM api_key_resets WHERE token_hash = ? AND expires_at > ? AND used_at IS NULL",
+  )
+    .bind(tokenHash, now())
+    .first<{ id: string; account_id: string }>();
+  if (!reset) return html(recoveryConfirmPage("", "This reset link is invalid or expired."), 400);
+  const apiKey = newKey();
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE accounts SET api_key = ? WHERE id = ?").bind(apiKey, reset.account_id),
+    c.env.DB.prepare("UPDATE api_key_resets SET used_at = ? WHERE id = ?").bind(now(), reset.id),
+    c.env.DB.prepare("DELETE FROM api_key_resets WHERE account_id = ? AND id != ?").bind(reset.account_id, reset.id),
+  ]);
   startSession(c, apiKey);
   return c.html(apiKeyResetPage(apiKey));
 });

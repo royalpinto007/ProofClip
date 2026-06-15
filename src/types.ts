@@ -6,6 +6,8 @@ export interface Env {
   CHECKOUT_PRO_URL?: string;
   CHECKOUT_AGENCY_URL?: string;
   BILLING_WEBHOOK_SECRET?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
 }
 
 export interface Account {
