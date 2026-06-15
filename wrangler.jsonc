@@ -14,9 +14,11 @@
   ],
   // Uploaded avatars + imported review screenshots.
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "proofclip-media" }],
+  // Serve on the brand subdomain (zone already on this account).
+  "routes": [{ "pattern": "proofclip.agentpostmortem.com", "custom_domain": true }],
   "observability": { "enabled": true },
   "vars": {
     // Public base URL the widget + cards point at. Override per environment.
-    "PUBLIC_BASE_URL": "https://proofclip.agentpostmortem.workers.dev"
+    "PUBLIC_BASE_URL": "https://proofclip.agentpostmortem.com"
   }
 }
