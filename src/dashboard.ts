@@ -26,6 +26,7 @@ function appBar(d: { space: Space; spaces: Space[]; planLabel: string }): string
     <div class="row">
       ${switcher}
       <span class="pill">${esc(d.planLabel)}</span>
+      <a class="btn sm ghost" href="/#pricing">Plans</a>
       <a class="btn sm ghost" href="/logout">Log out</a>
     </div>
   </div>`;
@@ -60,7 +61,7 @@ function reviewRow(t: Testimonial, spaceId: string, canCards: boolean): string {
     ? `<img src="${esc(t.image_url)}" style="height:54px;border-radius:8px">`
     : `<div>${esc((t.text || "").slice(0, 160))}</div>`;
   const act = (a: string, label: string, cls = "ghost") =>
-    `<form method="post" action="/app/testimonial/${a}" style="display:inline;margin:0">
+    `<form method="post" action="/app/testimonial/${a}" style="display:inline;margin:0" ${a === "delete" ? `onsubmit="return confirm('Delete this testimonial permanently?')"` : ""}>
        <input type="hidden" name="space" value="${esc(spaceId)}">
        <input type="hidden" name="id" value="${esc(t.id)}">
        <button class="btn sm ${cls}" type="submit">${label}</button></form>`;
@@ -69,7 +70,7 @@ function reviewRow(t: Testimonial, spaceId: string, canCards: boolean): string {
     : "";
   const statusColor = t.status === "approved" ? "var(--good)" : t.status === "pending" ? "var(--warn)" : "var(--muted)";
   return `<tr>
-    <td>${stars(t.rating)} ${content}<div class="muted" style="font-size:12px;margin-top:4px"><span class="tag">${esc(t.source)}</span> ${esc(t.name || "")} ${esc(t.company || "")}</div></td>
+    <td>${stars(t.rating)} ${content}<div class="muted" style="font-size:12px;margin-top:6px"><span class="tag">${esc(t.source)}</span> ${esc(t.name || "Unknown")} ${esc(t.company || "")}</div></td>
     <td><span class="tag" style="border-color:${statusColor};color:${statusColor}">${esc(t.status)}</span></td>
     <td><div class="row">
       ${t.status !== "approved" ? act("approve", "Approve") : ""}
@@ -94,7 +95,7 @@ export function dashboardPage(d: DashData): string {
   // Onboarding shown until the first testimonial arrives.
   const onboarding = empty
     ? `<div class="card reveal" style="border-color:rgba(168,85,247,.4)">
-        <h2 style="margin:0 0 4px">Welcome to ProofClip 👋</h2>
+        <h2 style="margin:0 0 4px">Welcome to ProofClip</h2>
         <p class="muted" style="margin:0 0 18px">ProofClip collects testimonials and turns them into a wall + social cards. Three steps to your first proof:</p>
         <div class="grid cols-3">
           <div class="card"><div class="pill">Step 1</div><h3 style="margin:10px 0 6px">Share your link</h3><p class="muted" style="font-size:14px">Send your collection link to a happy customer.</p><a class="btn sm" href="${esc(collectUrl)}" target="_blank">Open form</a></div>
@@ -116,15 +117,15 @@ export function dashboardPage(d: DashData): string {
       <div class="row" style="margin-bottom:20px">
         <div><h1 style="margin:0;font-size:30px;letter-spacing:-.6px">Dashboard</h1>
         <div class="muted" style="font-size:14px">${esc(d.space.name)}</div></div>
-        ${d.account.plan === "free" ? '<a class="btn right" href="/#pricing">Upgrade</a>' : '<span class="right"></span>'}
+        ${d.account.plan === "free" ? '<a class="btn right" href="/checkout/pro">Upgrade to Pro</a>' : '<span class="right"></span>'}
       </div>
 
       ${onboarding}
 
       <div class="grid cols-3" style="margin-top:18px">
-        <div class="card reveal"><div class="muted">Testimonials</div><div class="price">${d.counts.total}<span class="muted" style="font-size:14px;font-weight:500">/${limit}</span></div><div class="muted" style="font-size:13px">${d.counts.pending} pending &middot; ${d.counts.approved} live</div></div>
-        <div class="card reveal"><div class="muted">Widget views</div><div class="price">${d.analytics.views}</div></div>
-        <div class="card reveal"><div class="muted">Clicks</div><div class="price">${d.analytics.clicks}</div></div>
+        <div class="card metric reveal"><div class="muted">Testimonials</div><div class="price">${d.counts.total}<span class="muted" style="font-size:14px;font-weight:500">/${limit}</span></div><div class="muted" style="font-size:13px">${d.counts.pending} pending &middot; ${d.counts.approved} live</div></div>
+        <div class="card metric reveal"><div class="muted">Widget views</div><div class="price">${d.analytics.views}</div><div class="muted" style="font-size:13px">Tracked from embeds</div></div>
+        <div class="card metric reveal"><div class="muted">Clicks</div><div class="price">${d.analytics.clicks}</div><div class="muted" style="font-size:13px">Engagement events</div></div>
       </div>
 
       <div class="grid cols-3" style="margin-top:18px">
@@ -134,12 +135,13 @@ export function dashboardPage(d: DashData): string {
       </div>
 
       <div class="section" style="padding:32px 0 0">
-        <div class="row"><h2 style="margin:0;font-size:24px">Testimonials</h2>
+        <div class="toolbar"><div class="row"><h2 style="margin:0;font-size:24px">Testimonials</h2>
         ${d.counts.pending ? `<span class="pill" style="color:var(--warn);border-color:var(--warn)">${d.counts.pending} awaiting review</span>` : ""}</div>
-        ${overLimit ? `<div class="card" style="border-color:var(--warn);margin-top:12px"><b>Plan limit reached.</b> <span class="muted">You are at ${d.counts.total}/${limit}. <a href="/#pricing">Upgrade</a> to collect more.</span></div>` : ""}
+        <a class="btn sm ghost" href="${esc(wallUrl)}" target="_blank">View wall</a></div>
+        ${overLimit ? `<div class="card" style="border-color:var(--warn);margin-top:12px"><b>Plan limit reached.</b> <span class="muted">You are at ${d.counts.total}/${limit}. <a href="/checkout/pro">Upgrade</a> to collect more.</span></div>` : ""}
         <div class="card reveal" style="margin-top:12px;padding:0;overflow:hidden">
-          <table><thead><tr><th>Testimonial</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>${rows}</tbody></table>
+          <div class="table-wrap"><table><thead><tr><th>Testimonial</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>
         </div>
       </div>
 
@@ -149,8 +151,13 @@ export function dashboardPage(d: DashData): string {
           <p class="muted" style="margin:6px 0 4px;font-size:14px">Add proof from DMs, comments or reviews. Imported items go live immediately.</p>
           <form method="post" action="/app/import" enctype="multipart/form-data">
             <input type="hidden" name="space" value="${esc(d.space.id)}">
-            <label>Screenshot</label><input type="file" name="image" accept="image/*">
-            <label>Or paste text instead</label><textarea name="text" rows="2" placeholder="Optional"></textarea>
+            <label>Screenshot</label>
+            <div class="upload-zone">
+              <b>Drop or choose a screenshot</b>
+              <span class="muted" style="font-size:13px">PNG, JPG or WebP up to 5MB</span>
+              <input type="file" name="image" accept="image/*">
+            </div>
+            <label>Or paste text instead</label><textarea name="text" rows="3" placeholder="Paste the review text when you do not have a screenshot"></textarea>
             <label>Name / source</label><input name="name" placeholder="@happycustomer">
             <div style="height:12px"></div>
             <button class="btn" type="submit" ${overLimit ? "disabled" : ""}>Import</button>

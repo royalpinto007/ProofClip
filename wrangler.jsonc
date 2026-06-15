@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "proofclip",
   "main": "src/index.ts",
-  "compatibility_date": "2025-03-25",
+  "compatibility_date": "2026-06-15",
   "compatibility_flags": ["nodejs_compat"],
   // Relational store (free D1 tier). Run `npm run db:init:remote` after creating it.
   "d1_databases": [

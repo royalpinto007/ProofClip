@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Account, Env, Space, Testimonial } from "./types";
-import { planFor } from "./plans";
+import { PLANS, planFor } from "./plans";
 import {
   getAccountByEmail,
   getAccountByKey,
@@ -87,10 +87,64 @@ async function recordEvent(
     .run();
 }
 
+function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aa = enc.encode(a);
+  const bb = enc.encode(b);
+  let diff = aa.length ^ bb.length;
+  const len = Math.max(aa.length, bb.length);
+  for (let i = 0; i < len; i++) diff |= (aa[i] || 0) ^ (bb[i] || 0);
+  return diff === 0;
+}
+
 // ---------- public marketing ----------
 app.get("/", (c) => html(landingPage()));
-app.get("/signup", (c) => html(signupPage()));
+app.get("/signup", (c) => html(signupPage(c.req.query("plan"))));
 app.get("/login", (c) => html(loginPage()));
+
+app.get("/checkout/:plan", async (c) => {
+  const planId = c.req.param("plan");
+  if (planId === "free" || !(planId in PLANS)) return c.redirect("/signup");
+  const account = await sessionAccount(c);
+  if (!account) return c.redirect(`/signup?plan=${encodeURIComponent(planId)}`);
+  const links: Record<string, string | undefined> = {
+    starter: c.env.CHECKOUT_STARTER_URL,
+    pro: c.env.CHECKOUT_PRO_URL,
+    agency: c.env.CHECKOUT_AGENCY_URL,
+  };
+  const link = links[planId];
+  if (!link) {
+    return html(loginPage(`Checkout for ${planFor(planId).label} is not configured yet. Add a payment link in Cloudflare vars.`), 503);
+  }
+  const url = new URL(link);
+  url.searchParams.set("client_reference_id", account.id);
+  url.searchParams.set("prefilled_email", account.email);
+  url.searchParams.set("email", account.email);
+  url.searchParams.set("plan", planId);
+  return c.redirect(url.toString());
+});
+
+app.post("/api/billing/activate", async (c) => {
+  const secret = c.env.BILLING_WEBHOOK_SECRET;
+  const provided = c.req.header("x-proofclip-secret") || c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!secret || !provided || !constantTimeEqual(provided, secret)) return json({ error: "unauthorized" }, 401);
+  let body: any = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    return json({ error: "invalid json" }, 400);
+  }
+  const plan = String(body.plan || body.product || "").toLowerCase();
+  if (!(plan in PLANS) || plan === "free") return json({ error: "invalid plan" }, 400);
+  const accountId = String(body.account_id || body.client_reference_id || "").trim();
+  const email = String(body.email || body.customer_email || "").trim().toLowerCase();
+  const query = accountId
+    ? c.env.DB.prepare("UPDATE accounts SET plan = ? WHERE id = ?").bind(plan, accountId)
+    : c.env.DB.prepare("UPDATE accounts SET plan = ? WHERE email = ?").bind(plan, email);
+  const result = await query.run();
+  if (!result.meta.changes) return json({ error: "account not found" }, 404);
+  return json({ ok: true, plan });
+});
 
 // Exchange an API key for a session cookie (key never lands in the URL).
 app.post("/login", async (c) => {
@@ -111,6 +165,8 @@ app.post("/signup", async (c) => {
   const body = await c.req.parseBody();
   const email = String(body.email || "").trim().toLowerCase();
   const name = String(body.name || "").trim() || "My wall";
+  const selectedPlan = String(body.plan || "").toLowerCase();
+  const checkoutPlan = selectedPlan !== "free" && selectedPlan in PLANS ? selectedPlan : "";
   if (!email) return html(signupPage(), 400);
   if (await getAccountByEmail(c.env, email)) {
     return html(loginPage("That email already has an account. Use your API key to log in."), 409);
@@ -135,7 +191,7 @@ app.post("/signup", async (c) => {
     .run();
   startSession(c, account.api_key); // log them straight in
   // Return via the Hono context so the Set-Cookie header is preserved.
-  return c.html(keyIssuedPage(account.api_key, slug, c.env.PUBLIC_BASE_URL));
+  return c.html(keyIssuedPage(account.api_key, slug, c.env.PUBLIC_BASE_URL, checkoutPlan));
 });
 
 // ---------- demo (no auth, sample data) ----------

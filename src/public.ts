@@ -28,14 +28,17 @@ export function collectionForm(space: Space, ok = false): string {
   const accent = esc(space.accent || "#6366f1");
   return layout(
     `Leave a testimonial for ${space.name}`,
-    `<div class="wrap" style="max-width:560px;padding-top:48px">
-      <div style="text-align:center;margin-bottom:8px">
+    `<div class="wrap" style="max-width:980px;padding-top:44px">
+      <div class="hero-panel">
+      <div>
         ${space.logo_url ? `<img src="${esc(space.logo_url)}" alt="" style="height:44px;margin-bottom:10px">` : ""}
-        <h1 style="font-size:30px;letter-spacing:-.6px;margin:0">Share your experience with ${esc(space.name)}</h1>
-        <p class="muted" style="margin:8px 0 0">It takes 30 seconds and means a lot.</p>
+        <span class="pill">Customer testimonial</span>
+        <h1 style="font-size:clamp(34px,5vw,56px);line-height:1.04;letter-spacing:-1.3px;margin:16px 0 12px">Share your experience with <span class="g">${esc(space.name)}</span></h1>
+        <p class="muted" style="margin:0;max-width:520px;font-size:17px">A short note helps other customers understand what worked for you. It takes about 30 seconds.</p>
       </div>
-      ${ok ? `<div class="card reveal" style="border-color:${accent};margin-top:16px"><b>Thank you 🎉</b><p class="muted" style="margin:6px 0 0">Your testimonial was submitted and is awaiting review.</p></div>` : ""}
-      <form class="card reveal" style="margin-top:18px" method="post" action="/c/${esc(space.slug)}" enctype="multipart/form-data">
+      <div>
+      ${ok ? `<div class="card reveal" style="border-color:${accent};margin-bottom:16px"><b>Thank you.</b><p class="muted" style="margin:6px 0 0">Your testimonial was submitted and is awaiting review.</p></div>` : ""}
+      <form class="card reveal" method="post" action="/c/${esc(space.slug)}" enctype="multipart/form-data">
         <label>Your testimonial *</label>
         <textarea name="text" rows="4" required placeholder="What did you love?"></textarea>
         <label>Rating</label>
@@ -49,11 +52,13 @@ export function collectionForm(space: Space, ok = false): string {
           <div><label>Company / handle</label><input name="company" placeholder="Acme / @jane"></div>
         </div>
         <label>Photo (optional)</label>
-        <input type="file" name="avatar" accept="image/*">
+        <div class="upload-zone"><b>Add a photo</b><span class="muted" style="font-size:13px">Optional, but it makes the testimonial more trustworthy.</span><input type="file" name="avatar" accept="image/*"></div>
         <label class="row" style="margin-top:14px"><input type="checkbox" name="permission" value="1" style="width:auto;margin-right:8px" required> I allow ${esc(space.name)} to publish this testimonial.</label>
         <div style="height:14px"></div>
         <button class="btn" type="submit" style="background:${accent}">Submit testimonial</button>
       </form>
+      </div>
+      </div>
     </div>`,
     { nav: false },
   );
@@ -67,10 +72,10 @@ export function wallPage(space: Space, items: Testimonial[]): string {
   return layout(
     `${space.name}: wall of love`,
     `<div class="wrap">
-      <div style="text-align:center;margin:40px 0 28px">
+      <div style="text-align:center;margin:46px 0 30px">
         ${space.logo_url ? `<img src="${esc(space.logo_url)}" alt="" style="height:48px;margin-bottom:8px">` : ""}
         <span class="eyebrow"><span class="dot"></span><span class="pill">Wall of love</span></span>
-        <h1 style="font-size:clamp(28px,5vw,44px);letter-spacing:-1px;margin:10px 0 0">What people say about <span class="g">${esc(space.name)}</span></h1>
+        <h1 style="font-size:clamp(34px,5vw,58px);line-height:1.04;letter-spacing:-1.4px;margin:10px auto 0;max-width:820px">What people say about <span class="g">${esc(space.name)}</span></h1>
       </div>
       <div class="grid cols-3">${cards}</div>
     </div>`,

@@ -2,6 +2,10 @@ export interface Env {
   DB: D1Database;
   MEDIA: R2Bucket;
   PUBLIC_BASE_URL: string;
+  CHECKOUT_STARTER_URL?: string;
+  CHECKOUT_PRO_URL?: string;
+  CHECKOUT_AGENCY_URL?: string;
+  BILLING_WEBHOOK_SECRET?: string;
 }
 
 export interface Account {

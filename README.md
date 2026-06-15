@@ -35,7 +35,7 @@ npm run dev                    # http://localhost:8787
 ```
 
 Walk the flow: open `/signup`, save the API key, open the collection link
-(`/c/<slug>`), submit a testimonial, approve it in `/app?key=...`, then view
+(`/c/<slug>`), submit a testimonial, approve it in `/app`, then view
 the wall at `/w/<slug>` and the embed at `/widget.js`.
 
 ## Deploy
@@ -62,7 +62,9 @@ the wall at `/w/<slug>` and the embed at `/widget.js`.
 |---|---|
 | `GET /` | Landing + pricing |
 | `GET/POST /signup` | Create account, issue API key |
-| `GET /login`, `GET /app` | Dashboard (auth by `?key=`) |
+| `GET /login`, `GET /app` | Dashboard (auth by secure session cookie) |
+| `GET /checkout/:plan` | Redirect logged-in users to a configured checkout link |
+| `POST /api/billing/activate` | Protected webhook to flip `accounts.plan` |
 | `GET /demo` | Live sample wall |
 | `GET/POST /c/:slug` | Public collection form + submit |
 | `GET /w/:slug` | Public wall of love |
@@ -81,14 +83,31 @@ Limits live in `src/plans.ts` and are enforced server-side: testimonial counts
 (collection + import), widget counts, branding removal, custom domain, white
 label, and the card generator (Pro+).
 
-## Not yet built (paid-tier roadmap)
-
-Video testimonials, custom domains wiring, team seats, Stripe billing
-(plans are modeled; wire a checkout to flip `accounts.plan`), and multiple
-widget configs. The data model already supports them.
-
 ## Billing
 
-`accounts.plan` is the single source of truth. To go live, wire any checkout
-(Stripe, Lemon Squeezy, Gumroad) and on payment set the plan column for that
-account's email. Everything downstream gates automatically.
+`accounts.plan` is the single source of truth. Configure hosted payment links
+as Worker vars:
+
+- `CHECKOUT_STARTER_URL`
+- `CHECKOUT_PRO_URL`
+- `CHECKOUT_AGENCY_URL`
+
+Set `BILLING_WEBHOOK_SECRET` as a Worker secret. Your payment provider or
+automation can then call:
+
+```bash
+curl -X POST "$PUBLIC_BASE_URL/api/billing/activate" \
+  -H "content-type: application/json" \
+  -H "x-proofclip-secret: $BILLING_WEBHOOK_SECRET" \
+  -d '{"email":"customer@example.com","plan":"pro"}'
+```
+
+You can also send `account_id` or `client_reference_id`; checkout links receive
+both the account id and prefilled email as query params where providers support
+them.
+
+## Not yet built (paid-tier roadmap)
+
+Video testimonials, custom domains wiring, team seats, provider-specific
+webhook signature verification, and multiple widget configs. The data model
+already supports them.
