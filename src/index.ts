@@ -148,6 +148,18 @@ async function parseWebhookBody(c: any): Promise<Record<string, string>> {
   return out;
 }
 
+// True when a Gumroad ping signals the buyer should lose their paid plan:
+// a refund/chargeback/dispute, or a membership that cancelled or ended.
+function isDowngradeEvent(data: Record<string, string>): boolean {
+  const truthy = (v: string | undefined) =>
+    !!v && /^(true|1|yes)$/i.test(v.trim());
+  if (truthy(data.refunded) || truthy(data.disputed) || truthy(data.chargedback)) return true;
+  // Membership lifecycle pings (resource_name = cancellation / subscription_ended).
+  if (truthy(data.cancelled) || truthy(data.ended)) return true;
+  if (data.subscription_ended_at || data.subscription_cancelled_at || data.subscription_failed_at) return true;
+  return false;
+}
+
 function inferPlan(data: Record<string, string>): string {
   const haystack = [
     data.plan,
@@ -238,10 +250,17 @@ app.post("/api/billing/gumroad", async (c) => {
   } catch {
     return json({ error: "invalid body" }, 400);
   }
-  const plan = inferPlan(body);
-  if (!plan || !(plan in PLANS)) return json({ error: "unknown gumroad plan" }, 400);
   const email = String(body.email || body.purchaser_email || body.customer_email || "").trim().toLowerCase();
   const accountId = String(body.client_reference_id || body.account_id || "").trim();
+  // Refund / chargeback / membership cancellation -> drop back to free.
+  if (isDowngradeEvent(body)) {
+    // Only downgrade if the ping is about a ProofClip product (ignore unrelated sales).
+    if (!inferPlan(body)) return json({ ok: true, provider: "gumroad", ignored: true });
+    await activatePlan(c.env, "free", accountId, email);
+    return json({ ok: true, provider: "gumroad", plan: "free", downgraded: true });
+  }
+  const plan = inferPlan(body);
+  if (!plan || !(plan in PLANS)) return json({ error: "unknown gumroad plan" }, 400);
   if (!(await activatePlan(c.env, plan, accountId, email))) return json({ error: "account not found" }, 404);
   return json({ ok: true, provider: "gumroad", plan });
 });
