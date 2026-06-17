@@ -19,6 +19,10 @@
   "observability": { "enabled": true },
   "vars": {
     // Public base URL the widget + cards point at. Override per environment.
-    "PUBLIC_BASE_URL": "https://proofclip.agentpostmortem.com"
+    "PUBLIC_BASE_URL": "https://proofclip.agentpostmortem.com",
+    // Hosted Gumroad checkout links per plan (public product URLs).
+    "CHECKOUT_STARTER_URL": "https://royalpinto.gumroad.com/l/kwyihf",
+    "CHECKOUT_PRO_URL": "https://royalpinto.gumroad.com/l/zhykg",
+    "CHECKOUT_AGENCY_URL": "https://royalpinto.gumroad.com/l/ckaos"
   }
 }
